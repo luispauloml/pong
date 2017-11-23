@@ -3,7 +3,7 @@
 
 name:                pong
 version:             0.1.0.0
-synopsis:            Simples implementa‡Æo do jogo pong.
+synopsis:            Simples implementacao do jogo pong.
 -- description:         
 homepage:            http://github.com/luispauloml/pong
 license:             MIT
