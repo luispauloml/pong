@@ -81,7 +81,7 @@ jogo0    = Jogo    { _player1     = jogador0
                    , _player2     = jogador0
                    , _pong        = bola0
                    , _ultimoToque = Topo
-                   , _ultimoPonto = Esq
+                   , _ultimoPonto = Dir
                    , _atrasoPonto = delayInit }
 
 jogarIO j = playIO 
@@ -93,12 +93,18 @@ jogarIO j = playIO
     eventoTecla     -- Lidar com eventos IO
     passoGeral      -- Lida com a passagem do tempo
 
+novoAngulo :: Jogo -> IO Jogo
+novoAngulo jogo =
+  let l = _ultimoPonto jogo
+      cimaOuBaixo d x = if d == Dir
+                        then if odd x then x          else (-x)
+                        else if odd x then (180 - x)  else (180 + x)
+  in do a <- (randomRIO (5,45) :: IO Int)
+        return $ set (pong . angulo) 
+                     (fromIntegral $ cimaOuBaixo l a) jogo
+
 main :: IO ()
-main = let f x = if odd x then x else (-x)
-       in do a <- randomRIO (5, 45) :: IO Int
-             s <- newStdGen
-             jogarIO $ set (pong . angulo) (fromIntegral . f $ a) 
-                     $ jogo0
+main = novoAngulo jogo0 >>= jogarIO
 
 renderizar :: Jogo -> IO Picture
 renderizar jogo =
@@ -117,8 +123,8 @@ eventoTecla evento jogo =
 passoGeral :: Float -> Jogo -> IO Jogo
 passoGeral dt jogo = if _atrasoPonto jogo > 0
                      then return $ over atrasoPonto (+(-dt)) jogo
-                     else (detectColisao jogo) 
-                          >>= (moverJogadores passoJogador) 
+                     else detectColisao jogo
+                          >>= moverJogadores passoJogador
                           >>= moverBola
                           >>= bolaFora
 
@@ -172,31 +178,20 @@ moverBola jogo = return $ over (pong . posXY) f jogo
 bolaFora :: Jogo -> IO Jogo
 bolaFora jogo =
   let (x,y) = view (pong . posXY) jogo
-      f d x = if d == Dir
-              then if odd x then x          else (-x)
-              else if odd x then (180 - x)  else (180 + x)
-      pontoReset l a j = set (pong . posXY) (0,0)
-                       $ set atrasoPonto delayInit
-                       $ over (l . pts) (+1)
-                       $ set (player1 . posY) 0
-                       $ set (player2 . posY) 0
-                       $ set ultimoToque Topo
-                       $ (\j' -> if _ultimoPonto j' == Dir 
-                                 then set (pong . angulo)
-                                      (fromIntegral . (f Dir) $ a) 
-                                      j'
-                                 else set (pong . angulo) 
-                                      (fromIntegral . (f Esq) $ a) 
-                                      j' )
-                       $ (\j' -> if x > 0 
-                                 then set ultimoPonto Dir j'
-                                 else set ultimoPonto Esq j' ) j
-  in do s <- randomRIO (5, 45) :: IO Int
-        if x > view _3 limJanela 
-        then return $ pontoReset player1 s jogo 
+      pontoReset l j = set (pong . posXY) (0,0)
+                     $ set atrasoPonto delayInit
+                     $ over (l . pts) (+1)
+                     $ set (player1 . posY) 0
+                     $ set (player2 . posY) 0
+                     $ set ultimoToque Topo
+                     $ (\j' -> if x > 0 
+                               then set ultimoPonto Dir j'
+                               else set ultimoPonto Esq j' ) j
+  in if x > view _3 limJanela 
+        then novoAngulo $ pontoReset player1 jogo 
         else if x < view _4 limJanela 
-             then return $ pontoReset player2 s jogo
-             else return $ jogo
+             then novoAngulo $ pontoReset player2 jogo
+             else return jogo
 
 detectColisao :: Jogo -> IO Jogo
 detectColisao jogo
@@ -216,7 +211,6 @@ detectColisao jogo
                                 $ set ultimoToque d
                                 $ over (pong . angulo) (refletir d) j
 
--- Contato entre jogador e bola
 contatoJB :: Jogo ->  Bool
 contatoJB jogo = 
   if ((xB < 0) && (abs (yB - yJ1)) < (compJogador/2)) ||
@@ -224,11 +218,8 @@ contatoJB jogo =
   then True else False
     where yJ1  = view (player1 . posY) jogo
           yJ2  = view (player2 . posY) jogo
-          lEsq = view _4 limJanela
-          lDir = view _3 limJanela
           (xB,yB)  = view (pong . posXY) jogo
 
--- Mudança de ângulo de uma bola devido a colisão
 refletir :: Lado -> Float -> Float
 refletir l a
     | l == Topo = worker a 270
@@ -236,3 +227,4 @@ refletir l a
     | l == Esq  = worker a 0
     | l == Dir  = worker a 180
       where worker t n = (n + 90) - (t - (n + 90))
+      
